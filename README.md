@@ -6,10 +6,8 @@ Updated for use at JIVE during outreach events by IvB 31 May 2022
 Uses Open CV image detection  
 
 *Operating instructions*  
-Install OpenCV on the MacBook using pip3, python 3.8.3 and MacOS
-11.4   
-`> pip3 install opencv-python`
-
+Requires pip3, python 3.8.3 and has been tested on MacOS 11.4   
+Install OpenCV on the MacBook `pip3 install opencv-python`  
 From the terminal launch this with `python3 school_demo.py`  
 
 To include another image, first check its dimensions (number of pixels
