@@ -1,10 +1,9 @@
 ### Interferometry demo used at JIVE outreach events ###
 
 Based on https://github.com/adampbeardsley/liveInterferometer
+Updated for use at JIVE during outreach events by IvB 31 May 2022
 
-Uses Open CV image detection
-Updated for use at JIVE during outreach events by IvB 
-31 May 2022
+Uses Open CV image detection  
 
 *Operating instructions*  
 Install OpenCV on the MacBook using pip3, python 3.8.3 and MacOS
