@@ -1,6 +1,6 @@
 ### Interferometry demo used at JIVE outreach events ###
 
-Based on https://github.com/adampbeardsley/liveInterferometer  
+Cloned from https://github.com/adampbeardsley/liveInterferometer  
 Updated for use at JIVE during outreach events by IvB 31 May 2022
 
 Uses Open CV image detection  
@@ -19,7 +19,7 @@ In case of an error, reduce the pixel size of the image and try again,
 this can require some fine tuning to get it right, especially with
 larger images.
 
-*Changelog*  
+*Changelog*
 * The default Facetime camera on MacOS has device number 0, changed the
 default input to that, so this should work on Macs now. Not tested
 with an external camera.  
