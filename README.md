@@ -15,19 +15,17 @@ From the terminal launch this with `python3 school_demo.py`
 To include another image, first check its dimensions (number of pixels
 on each side). Then do:   
 `python3 school_demo.py -i <image.jpg> --xsize <x-dimensions> --ysize
-<y-dimentions>`
+<y-dimentions>`  
 E.g.: `python3 school_demo.py -i test.jpg --xsize 1280 --ysize 720`  
 In case of an error, reduce the pixel size of the image and try again,
 this can require some fine tuning to get it right, especially with
 larger images.
 
-*Changelog*
-The default Facetime camera on MacOS has device number 0, changed the
+*Changelog*  
+* The default Facetime camera on MacOS has device number 0, changed the
 default input to that, so this should work on Macs now. Not tested
 with an external camera.  
-
-Changed the display of the images to *not* show the input image  
-
-Fixed some indents which were not properpy done  
+* Changed the display of the images to *not* show the input image  
+* Fixed some indents which were not properpy done  
 
 
