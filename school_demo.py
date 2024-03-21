@@ -5,9 +5,9 @@ Interferometer/PSF simulator
 Created by: Jack Hickish
 Minor Modifications by: Griffin Foster
 Modified 14/06/16 -- Added command entry with curses. Added pause and "persistence" mode
-Modified Jan 16th 2019 -- CJ, Edgar, + Adam edit. Plot 3 images in one window. 
+Modified Jan 16th 2019 -- CJ, Edgar, + Adam edit. Plot 3 images in one window.
                           Could not get last one to show in same window
-                          Attempts saved in "camera_window_attempt"  
+                          Attempts saved in "camera_window_attempt"
 
 TODO: add color
 TODO: adjust detection paramters
@@ -20,7 +20,7 @@ TODO: add rotation command
 ### $> pip3 install opencv-python
 ## The default Facetime camera on MacOS has device number 0, changed the default input to that
 ## Changed the display of the images to not show the input image
-## Fixed some indents which were not properpy done
+## Fixed some indents which were not properly done
 ## From the terminal launch this with > python3 school_demo.py
 ## To include another image, first check the pixel dimentions
 ## Then do > python3 school_demo.py -i <image.jpg> --xsize <x-dimensions> --ysize <y-dimentions>
@@ -28,66 +28,36 @@ TODO: add rotation command
 
 
 # For ubuntu 12.04 install see: http://karytech.blogspot.com/2012/05/opencv-24-on-ubuntu-1204.html
-import cv2 as cv
 import numpy as np
 import time
 import sys
 import optparse
 import curses
 import os
+import cv2 as cv
+import scipy
 
 
 
-# Should probably just be a method of the PSF class now.
-def fast_conv(image, psf):
-    max_size = np.array([np.max([image.shape[0], psf.shape[0]]),
-                         np.max([image.shape[1], psf.shape[1]])])
-    n = int(2**np.ceil(np.log2(max_size[0])))
-    m = int(2**np.ceil(np.log2(max_size[1])))
-    imageDirty = np.fft.irfft2(np.fft.rfft2(image, (n, m)) * np.fft.rfft2(psf, (n, m)))
-    return imageDirty[psf.shape[0] // 2:image.shape[0] + psf.shape[0] // 2,
-                      psf.shape[1] // 2:image.shape[1] + psf.shape[1] // 2]
-
-class PSF(object):
-    def __init__(self, xsize, ysize, persistence=False, window=False):
-        self.xsize = xsize
-        self.ysize = ysize
-        
-        # make a 2D Gaussian to modulate the PSF with
-        def gauss2d(x0, y0, amp, stdx, stdy):
-            return lambda x, y: amp * np.exp(-1. * ((((x - x0)**2.) / (2 * stdx**2.)) +
-                                                    (((y - y0)**2.) / (2 * stdy**2.))))
-        gaussFunc = gauss2d(0., 0., 1., 40., 40.)
-        xx = np.arange(self.xsize) - (self.xsize / 2)
-        yy = np.arange(self.ysize) - (self.ysize / 2)
-        xv, yv = np.meshgrid(xx, yy)
-        self.gaussGrid = gaussFunc(xv, yv)
-        self.psf = np.zeros([self.ysize, self.xsize])
-        
-    def getNorm(self, station_locs, persistence=False, window=False, gaussian=True):
-        if not persistence:
-            self.psf = np.zeros([self.ysize, self.xsize])
-            
-        self.psf += np.fft.fftshift(np.abs(np.fft.fft2(station_locs, s=[self.ysize, self.xsize]))**2)
-
-        if self.psf.max() != 0:
-            if window:
-                bls = np.fft.ifft2(np.fft.fftshift(self.psf))
-                abs_bls = np.abs(bls)
-                abs_bls[0, 0] = 0
-                abs_bls[abs_bls < 0.5] = 1e9
-                win_psf = np.abs(np.fft.fftshift(np.fft.fft2(bls / abs_bls, s=[self.ysize, self.xsize])))
-                psf_norm = (win_psf / win_psf.max())
-                # apply Gaussian taper to the PSF
-            else:
-                psf_norm = (self.psf / self.psf.max())
-            if gaussian:
-                psf_norm *= self.gaussGrid 
-        else:
-            psf_norm = self.psf
-        return psf_norm
+def fast_conv(image, uv_tracks):
+    # FIXME: We don't currently handle resizing.
+    uv_image = np.fft.fft2(image)
+    #uv_tracks2 = np.ones(uv_tracks.shape)
+    sample = uv_image * uv_tracks
+    dirty = np.abs(np.fft.ifft2(sample))
+    s = np.max(dirty)
+    if s > 0:
+        dirty = 255*1/s * dirty
+    return dirty
 
 
+class Mutable(object):
+    def __init__(self, v):
+        self.v = v
+    def set(self, v):
+        self.v = v
+    def get(self):
+        return self.v
 
 def main(stdscr, opts, args):
     # check /dev/, ID is attached to video device (0 is in the internal)
@@ -107,22 +77,21 @@ def main(stdscr, opts, args):
     #
     brightness_threshold = 100
     target_img_grey[target_img_grey < brightness_threshold] = 0
-        
-    RESCALE_FACTOR = opts.res
+
+    RESCALE_FACTOR =  opts.res
 
     persistence = False
     window = False
     gaussian = True
-    psf = PSF(xsize, ysize, persistence, window)
-    
+    # FIXME: My guess is the psf should be much smaller now that baseline support isn't just wrong
+    # psf = PSF(xsize, ysize, persistence, window)
+
     stdscr.nodelay(1)  # don't wait for keyboard input when calling getch
     stdscr.clear()
     stdscr.addstr('Controls: Quit (q), Pause (p), Toggle Persistence (r)\n')
 
-
     # Sigh
     rv, layout_img = cam.read()
-    old_shape = layout_img.shape
     yc, xc = layout_img.shape[:2]
     ac = xc/yc
     if ac > aspect:
@@ -130,10 +99,13 @@ def main(stdscr, opts, args):
     elif ac < aspect:
         yc = int(np.around(xc / aspect))
     layout_img = layout_img[:yc, :xc, :]
-    stdscr.addstr("New xc {} yc {}\n".format(xc, yc))
-    stdscr.addstr("Old shape: {} Aspect ratio: {} Target aspect: {} New shape: {}\n".format(old_shape, ac, aspect, layout_img.shape))
+    hour_angle = Mutable(1)
+    hour_angle.set(3)
 
-    
+    uvwindowname = "UV tracks"
+    cv.namedWindow(uvwindowname)
+    trackbar_name = "Hour angle 12"
+    cv.createTrackbar(trackbar_name, uvwindowname, 0, 12, hour_angle.set)
 
 
     while(True):
@@ -151,60 +123,104 @@ def main(stdscr, opts, args):
         elif ac < aspect:
             yc = int(np.around(xc / aspect))
         layout_img = layout_img[:yc, :xc, :]
-        
+
         # stdscr.addstr("{} {} {}\n".format(aspect, ac, layout_img.shape))
 
         layout_img = cv.resize(layout_img, (xsize, ysize), interpolation=cv.INTER_CUBIC)
         layout_img_grey = cv.cvtColor(layout_img, cv.COLOR_BGR2GRAY)
         layout_img_grey = cv.medianBlur(layout_img_grey, 9, 9)
 
-        # stdscr.addstr("{}\n".format(layout_img_grey.shape))
-        
         # set the station locations to zero for each loop, unless we have persistence, in which
         # case leave the ones from the previous iteration in
         if not persistence:
             station_overlay = np.zeros_like(layout_img_grey)
-            
-        station_locs = np.zeros([ysize // RESCALE_FACTOR, xsize // RESCALE_FACTOR])
 
         method = cv.HOUGH_GRADIENT  # only method that exists
-        
+
         # If it is too large, some circles may be missed.
         circles = None  # set to None
-        #param1 = 50  # threshold parameterq
-        #param2 = 30  # The smaller it is, the more false circles may be detected.
+        # param1 = 50  # threshold parameterq
+        # param2 = 30  # The smaller it is, the more false circles may be detected.
         # param1, param2 = 100.0, 100.0 # defaults
         param1, param2 = 50, 50
         minRadius = 10  # Minimum circle radius
         # Minimum distance between the centers of the detected circles.
-        # If the parameter is too small, multiple neighbor circles may be falsely detected in addition to a true one.
-        minDist = 1.5 * minRadius  
+        # If the parameter is too small, multiple neighbor circles may be falsely detected
+        # in addition to a true one.
+        minDist = 1.5 * minRadius
         maxRadius = 50  # Maximum circle radius
         dp = 2 # Inverse ratio of the accumulator resolution to the image resolution
-        
+
         circles = cv.HoughCircles(layout_img_grey, method, dp, minDist, circles,
                                    param1, param2, minRadius, maxRadius)
 
+        station_locations = []
         # For diagnostics, we draw circles with their radius
         ds = 5 # Size of rectange we use for antenna in U-V space
-        fails = 0
         if circles is not None:
             circles = np.uint16(np.around(circles))
             for x, y, r in circles[0]:
+                x = int(x)
+                y = int(y)
+                if x > xsize or y > ysize:
+                    pass
                 station_overlay[x-ds:x+ds,  y-ds:y+ds] = 1
                 # 255 is *white* here
                 cv.circle(layout_img_grey, (x, y), r, 255, 1)
                 cv.circle(layout_img_grey, (x, y), 2, 255, 2)
+                station_locations.append((y, x))
+
+        # Create UV tracks for a given hour angle
+        hour_angle_rad = 2*np.pi*hour_angle.get()/24 # 0.26 per hour
+        fails2 = 0
+        uv_baselines = np.zeros([ysize // RESCALE_FACTOR, xsize // RESCALE_FACTOR])
+        for i in range(len(station_locations)):
+            for j in range(0, i):
+                y1, x1 = station_locations[i]
+                y2, x2 = station_locations[j]
+                dx = (x2 - x1) // RESCALE_FACTOR
+                dy = (y2 - y1) // RESCALE_FACTOR
+                ha0 = np.arctan2(dx, dy)
+                r = np.sqrt(dy**2 + dx**2)
+                Y, X = uv_baselines.shape
+                angles = np.arange(0, hour_angle_rad, 0.005) # Magic number!
                 try:
-                    station_locs[y // RESCALE_FACTOR, x // RESCALE_FACTOR] = 1
-                except:
-                    fails += 1
-                    
-        ## draw white squares at the station locations
-        # layout_img_grey[station_overlay == 1] = 128
-                
-        psf_norm = psf.getNorm(station_locs, window, persistence, gaussian)
-        dirty_arr = fast_conv(target_img_grey, psf_norm)
+                    uv_baselines[(Y + dy)//2, (X + dx)//2] = 1
+                    uv_baselines[(Y - dy)//2, (X - dx)//2] = 1
+                    for ha in angles:
+                        alpha = ha0 + ha
+                        ay = r*np.cos(alpha)
+                        ax = r*np.sin(alpha)
+                        cx = round(X + ax)//2
+                        cy = round(Y + ay)//2
+                        uv_baselines[cx-2:cx+2, cy-2:cy+2] = 1
+                        cx = round(X - ax)//2
+                        cy = round(Y - ay)//2
+                        uv_baselines[cx-2:cx+2, cy-2:cy+2] = 1
+                except Exception as e:
+                    print("Exception: {}".format(e))
+                    fails2 += 1
+        Y, X = uv_baselines.shape
+        # uv_baselines[X//2-10:X//2+10, Y//2-10:Y//2+10] = 1
+        margin = 2
+        uv_baselines[0:margin, :] = 1
+        uv_baselines[Y-margin:, :] = 1
+        uv_baselines[:, 0:margin] = 1
+        uv_baselines[:, X-margin:] = 1
+        
+        
+        
+        # I guess this is supposed to be a normalized psf? (Whatever that is)
+        # psf_norm = psf.getNorm(uv_baselines, window, persistence, gaussian)
+        # Note: uv_stations isn't used after this.
+
+
+        # This is impressively irritating!
+        big_uv = np.zeros(target_img_grey.shape, float)
+        big_uv0 = scipy.ndimage.zoom(uv_baselines, opts.res)
+        nx0, ny0 = big_uv0.shape
+        big_uv[0:nx0, 0:ny0] = big_uv0
+        dirty_arr = fast_conv(target_img_grey, big_uv)
 
         if dirty_arr.max() != 0:
             dirty_arr /= dirty_arr.max()
@@ -222,9 +238,11 @@ def main(stdscr, opts, args):
         cv.imshow("Antenna Layout", layout_img_grey)
         # cv.imshow("Target Image", target_img_grey)
         # cv.imshow("horiz concat", numpy_horiz_concat2)
-        cv.imshow("Point Spread", psf_norm)
-        cv.imshow("Antennas", station_locs*255)
+        # cv.imshow("Point Spread", psf_norm)
+        # cv.imshow("Antennas", uv_stations*255)
+        # cv.imshow(uvwindow, uv_baselines)
         cv.imshow("Observed Image", dirty_arr)
+        cv.imshow(uvwindowname, uv_baselines)
 
         # Key command handling
         k = stdscr.getch()
@@ -235,7 +253,7 @@ def main(stdscr, opts, args):
                 break
             elif k == ord('p'):
                 stdscr.addstr('Paused. Press any key to continue...\n')
-                while(True):
+                while True:
                     k2 = stdscr.getch()
                     if k2 != -1:
                         stdscr.addstr('Unpausing...\n')
@@ -260,8 +278,6 @@ def main(stdscr, opts, args):
                 else:
                     stdscr.addstr('Turning guassian on\n')
                 gaussian = not gaussian
-                    
-                
         cv.waitKey(1)
 
 cv.destroyAllWindows()
