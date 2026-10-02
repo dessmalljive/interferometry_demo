@@ -112,9 +112,13 @@ def main(stdscr, opts, args):
         # Grab 4 images. The images are buffered, so this helps
         # get one that is relatively recent. My cv doesn't
         # seem to support reducing the size of the buffer.
+        imgs = []
         for i in range(4):
             rv, layout_img = cam.read()
 
+        layout_img = cv.resize(layout_img, (xsize, ysize), interpolation=cv.INTER_CUBIC)
+        layout_img_grey = cv.cvtColor(layout_img, cv.COLOR_BGR2GRAY)
+        
         # Match the aspect ration of the webcam to the image we are using
         yc, xc = layout_img.shape[:2]
         ac = xc/yc
@@ -126,9 +130,9 @@ def main(stdscr, opts, args):
 
         # stdscr.addstr("{} {} {}\n".format(aspect, ac, layout_img.shape))
 
-        layout_img = cv.resize(layout_img, (xsize, ysize), interpolation=cv.INTER_CUBIC)
-        layout_img_grey = cv.cvtColor(layout_img, cv.COLOR_BGR2GRAY)
-        layout_img_grey = cv.medianBlur(layout_img_grey, 9, 9)
+        #blursize = 9
+        blursize = 5        
+        layout_img_grey = cv.medianBlur(layout_img_grey, blursize, blursize)
 
         # set the station locations to zero for each loop, unless we have persistence, in which
         # case leave the ones from the previous iteration in
@@ -142,13 +146,13 @@ def main(stdscr, opts, args):
         # param1 = 50  # threshold parameterq
         # param2 = 30  # The smaller it is, the more false circles may be detected.
         # param1, param2 = 100.0, 100.0 # defaults
-        param1, param2 = 50, 50
+        param1, param2 = 50, 30
         minRadius = 10  # Minimum circle radius
+        maxRadius = 20  # Maximum circle radius
         # Minimum distance between the centers of the detected circles.
         # If the parameter is too small, multiple neighbor circles may be falsely detected
         # in addition to a true one.
         minDist = 1.5 * minRadius
-        maxRadius = 50  # Maximum circle radius
         dp = 2 # Inverse ratio of the accumulator resolution to the image resolution
 
         circles = cv.HoughCircles(layout_img_grey, method, dp, minDist, circles,
@@ -202,11 +206,12 @@ def main(stdscr, opts, args):
                     fails2 += 1
         Y, X = uv_baselines.shape
         # uv_baselines[X//2-10:X//2+10, Y//2-10:Y//2+10] = 1
-        margin = 2
-        uv_baselines[0:margin, :] = 1
-        uv_baselines[Y-margin:, :] = 1
-        uv_baselines[:, 0:margin] = 1
-        uv_baselines[:, X-margin:] = 1
+        if False:
+            margin = 2
+            uv_baselines[0:margin, :] = 1
+            uv_baselines[Y-margin:, :] = 1
+            uv_baselines[:, 0:margin] = 1
+            uv_baselines[:, X-margin:] = 1
         
         
         
